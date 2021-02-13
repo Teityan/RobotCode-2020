@@ -4,7 +4,6 @@ import com.ctre.phoenix.motorcontrol.ControlMode;
 import com.ctre.phoenix.motorcontrol.NeutralMode;
 import com.ctre.phoenix.motorcontrol.can.TalonSRX;
 import edu.wpi.first.wpilibj.Servo;
-import edu.wpi.first.wpilibj.Timer;
 import frc.robot.subClass.Arm;
 import frc.robot.subClass.Const;
 import frc.robot.subClass.OriginalTimer;
@@ -18,8 +17,7 @@ public class ClimbMode {
     private Servo climbServo;
     private TalonSRX slideMotor;
 
-    private Timer slideTimer;
-    private OriginalTimer lockTimer;
+    private OriginalTimer lockTimer, slideTimer;
 
     private int n_extendReverse;
 
@@ -29,11 +27,12 @@ public class ClimbMode {
         this.slideMotor = climbSlideMotor;
         this.lockTimer = new OriginalTimer(0.25, 
         // 制限時間を超えるまで
-        () -> {
+        (__) -> {
             unlockServo();
+            return OriginalTimer.createArgs();
         }, 
         // 制限時間を超えたら
-        () -> {
+        (__) -> {
             //実質0.04s
             if (n_extendReverse > 1) {
                 unlockServo();
@@ -43,10 +42,20 @@ public class ClimbMode {
                 setClimbMotorSpeed(-1);
                 n_extendReverse++;
             }
+            return OriginalTimer.createArgs();
         }
         );
-        this.slideTimer = new Timer();
-        slideTimer.start();
+
+        this.slideTimer = new OriginalTimer(0.3, 
+        // 制限時間を超えていない
+        (__) -> {
+            return OriginalTimer.createArgs(0.0);
+        }, 
+        // 制限時間を超えた
+        (speed) -> {
+            return OriginalTimer.createArgs(speed.get(0));
+        });
+
         this.arm = arm;
 
         climbMotor.setNeutralMode(NeutralMode.Brake);
@@ -150,12 +159,8 @@ public class ClimbMode {
     private void setSlideMotorSpeed(double speed) {
         if (slideMotor.getStatorCurrent() > 30) {
             slideTimer.reset();
-            slideTimer.start();
         }
-        if (slideTimer.get() < 0.3) {
-            //クールダウン
-            speed = 0;
-        }
+        speed = (double)slideTimer.run(OriginalTimer.createArgs(speed)).get(0);
 
         slideMotor.set(ControlMode.PercentOutput, speed);
         System.out.println("slideMotorCurrent(Out):" + slideMotor.getStatorCurrent());

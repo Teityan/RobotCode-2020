@@ -1,12 +1,11 @@
 package frc.robot;
 
-
 import com.revrobotics.ColorSensorV3;
 import edu.wpi.first.wpilibj.I2C;
 import edu.wpi.first.wpilibj.Servo;
-import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.util.Color;
 import frc.robot.subClass.Const;
+import frc.robot.subClass.OriginalTimer;
 import frc.robot.subClass.State;
 
 public class PanelRotationMode {
@@ -18,14 +17,33 @@ public class PanelRotationMode {
     Servo colorSensorServo;
 
 
-    Timer panelRotatingTimer = new Timer();
-    boolean is_panelRotatingTimerStart = false;
+    OriginalTimer panelRotatingTimer;
     ColorCode preColor;
     boolean is_panelRotating = false;
     boolean is_PanelColorHasChanged;
 
     PanelRotationMode(Servo servo) {
         this.colorSensorServo = servo;
+        panelRotatingTimer = new OriginalTimer(0.3,
+            (__) -> {
+                //0.3s経つまで変わらなければ回ってない
+                is_panelRotating = false;
+                //色が変われば回り始めたかも
+                if (is_PanelColorHasChanged) {
+                    panelRotatingTimer.reset();
+                }
+                return OriginalTimer.createArgs();
+            }, 
+            (__) -> {
+                if (is_PanelColorHasChanged) {
+                    //0.3s以内に変われば回ってる、タイマーリセット
+                    is_panelRotating = true;
+                    panelRotatingTimer.reset();
+                }
+                //0.3s以内に変わらないなら回っているかどうかわからないので放置
+
+                return OriginalTimer.createArgs();
+            });
     }
 
     public void changeState(State state) {
@@ -34,25 +52,7 @@ public class PanelRotationMode {
         preColor = DetectedColor();
         System.out.println("PanelColor:" + preColor);
 
-        if (!is_panelRotatingTimerStart) {
-            panelRotatingTimer.reset();
-            panelRotatingTimer.start();
-            is_panelRotatingTimerStart = true;
-        }
-
-        if (panelRotatingTimer.get() > 0.3) {
-            //0.3s経つまで変わらなければ回ってない
-            is_panelRotating = false;
-            //色が変われば回り始めたかも
-            is_panelRotatingTimerStart = !is_PanelColorHasChanged;
-        } else {
-            if (is_PanelColorHasChanged) {
-                //0.3s以内に変われば回ってる、タイマーリセット
-                is_panelRotating = true;
-                is_panelRotatingTimerStart = false;
-            }
-            //0.3s以内に変わらないなら回っているかどうかわからないので放置
-        }
+        panelRotatingTimer.run();
 
         if (is_panelRotating) {
             state.driveState = State.DriveState.kSuperLow;
@@ -65,7 +65,7 @@ public class PanelRotationMode {
             case p_ManualRot:
                 state.shooterState = State.ShooterState.kManual;
                 state.shooterLeftSpeed = state.shooterRightSpeed = state.panelManualSpeed;
-                is_panelRotatingTimerStart = false;
+                 panelRotatingTimer.reset();
                 break;
 
             //色合わせ　青<->赤、黄<->緑
@@ -86,7 +86,7 @@ public class PanelRotationMode {
                 break;
 
             case p_DoNothing:
-                is_panelRotatingTimerStart = false;
+                panelRotatingTimer.reset();
                 state.driveState = State.DriveState.kLow;
                 break;
         }
